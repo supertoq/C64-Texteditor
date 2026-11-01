@@ -19,13 +19,15 @@ Special characters are mapped to suitable C64 screen codes for display.
 - Optional line endings: LF or CRLF.
 - Text buffer at `$4000–$CEFF` (approximately 36 KB); BASIC ROM is switched off.
 - The uppercase/lowercase character set is copied to RAM at `$3000`.
-- Application memory usage: approx. 7 KB.
+- Application memory usage: approx. 12 KB.
 - All keyboard input is converted to ASCII.  
 - Characters that cannot be entered directly via the keyboard can be entered manually using F8.  
 - German UTF-8 umlauts are displayed as inverted ASCII characters; no conversion is performed in the file.  
-- Drives 8–11 can be selected; disks are checked for space before saving. 
+- Drives 8–11 can be selected for loading and saving; disks are checked for space before saving. 
+- File access via the UCI interface (Ultimate 64, C64 Ultimate), presented as drive U.
+- UCI: Files that are too large to fit in memory are split into parts; so you can still read them (e.g. book).
    
-### ANSI X3.4-1986 characters  
+### ANSI X3.4-1986 Characters  
 ```
 !"#$%&'()*+,-./ 
 0123456789:;<=>? @  
@@ -35,14 +37,19 @@ abcdefghijklmno
 pqrstuvwxyz {|}~   
 ```  
   
-### Keyboard controls:  
+### Keyboard Controls:  
     F1 = Save   F3 = Load   F5 = New   F8 = Code input   F7 = Quit  
       
-    Cursor keys  =  Move cursor       HOME    =   Start of line  
-    DEL          =  Backspace         CLR     =   Start of text  
-    SHIFT+DEL    =  Delete (INST)     F2      =   End of text  
-    RETURN       =  New line          F4 / F6 =   Page up / down  
-    CTRL+I       =  Tabulator
+    Cursor keys  =  Move cursor 
+    HOME    =   Start of line  
+    CLR     =   Start of text 
+    F2      =   End of text 
+    F4 / F6 =   Page up / down   
+  
+    DEL          =  Backspace          
+    SHIFT+DEL    =  Delete (INST)     
+    RETURN       =  New line           
+    CTRL+I       =  Tabulator  
   
     Direct character input on the C64 keyboard:  
         Pound              = Backslash \  
@@ -75,6 +82,10 @@ pqrstuvwxyz {|}~
          
   
 Start the program from floppy disk using `LOAD"TEXTEDITOR",8,1` and `RUN`.
+  
+### File Loading And Saving  
+<img src="assets/screenshot-05.png" alt="loading file" width="450">
+To load (F3) or save (F1), you can select the drive while the command line is active by pressing CRSR up/down. Drive “U” is shown on Ultimate devices and provides access to USB, SD cards, and more.  
   
 <br>
 <br>  
