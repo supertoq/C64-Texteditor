@@ -9,15 +9,17 @@
 ;  ANSI Sonderzeichen werden fuer die Darstellung auf dem C64 in passende Bildschirmcodes umgewandelt.
 ;  
 ;  - Dateien werden als C64 SEQ-Dateien mit reinem ASCII gespeichert 
-;    (in Windows muss die Dateiendung in .txt umbenannt werden)
+;    (in Windows muss die Dateiendung .seq in .txt umbenannt werden)
 ;  - Zeilenende LF oder CRLF optional umstellbar
 ;  - Textspeicher $4000-$CEFF (ca. 36 KByte), BASIC-ROM wird abgeschaltet
-;  - Programmspeicherverbrauch 7,3 KByte
+;  - Programmspeicherverbrauch 11,8 KByte
 ;  - Zeichensatz Gross/Klein wird in den RAM $3000 kopiert
 ;  - Jede Eingabe wird nach ASCII umgewandelt
 ;  - nicht verfuegbare Tasteneingaben koennen per F8 haendisch eingetragen werden
 ;  - Deutsche UTF-8 Umlaute werden als invertierter Buchstabe angezeigt, keine Umwandlung im Text
-;  - Beim Speichern der Datei wird zuvor eine Platzpruefung durchgefuehrt
+;  - Beim Speichern auf Diskette wird zuvor eine Speicherplatzpruefung durchgefuehrt
+;  - Dateizugriff ueber die UCI-Schnittstelle (Ultimate 64, C64 Ultimate)
+;  - UCI: Zu grosse Dateien lassen sich in Teilen laden, so wird z.B. auch ein Buch lesbar
 ;
 ;  Tastenverwendung:
 ;    F1 = Speichern  F3 = Laden  F5 = Neu  F7 = Beenden  F8 = ASCII Code Eingabe
@@ -54,14 +56,24 @@
 ;  Alternative Zeichendarstellung:
 ;        Curly Brace { } = dargestellt als invertierte Klammern ()
 ;        Tilde ~ = dargestellt als invertiertes Minus -
-;        UTF-8 DE Umlaute = dargestellt als invertiertes Zeichen    
-;        UTF-8 Chevrons « » = dargestellt als invertierte < > 
+;        UTF-8 DE-Umlaute = dargestellt als invertiertes Zeichen    
+;        UTF-8 Chevrons << >> = dargestellt als invertierte < >
 ;
 ;  Editor starten - von Diskette per LOAD"TEXTEDITOR",8 und RUN
 ;
 ;  Beim Laden (F3) und Speichern (F1) kann mit den Cursortasten hoch/runter
 ;  das Laufwerksgeraet zwischen 8 - 11 gewaehlt werden.
 ;  Mit der Eingabe von $ als Dateiname wird der Disketteninhalt aufgelistet.
+;
+;  UCI: Ist die Schnittstelle im Menue des Ultimate eingeschaltet
+;  (Command Interface), erscheint vor Laufwerk 8 zusaetzlich "Drive U".
+;  Ordnername mit / am Ende wechselt in den Ordner, .. eine Ebene zurueck,
+;  / zum Anfang. Dateinamen hoechstens 25 Zeichen (Diskette 16).
+;  Bei einem Tippfehler bleibt die Eingabe nach einer Taste zum Korrigieren.
+;  Namen bei UCI wie im Text: ohne SHIFT klein, mit SHIFT gross.
+;  Gibt es die Datei schon, fragt SAVE vor dem Ersetzen nach (Y/N).
+;  Mit Drive U zeigen F1/F3 gleich den Inhalt des aktuellen Ordners.
+;  LOAD erlaubt Platzhalter: * beliebig viele Zeichen, ? ein Zeichen.
 ;
 ; =====================================================================
 
@@ -73,6 +85,12 @@
 
 ; Option:
 CRLF    = 0                     ; Zeilenende: 0 = LF, 1 = CR+LF
+
+; Option: Zu grosse Datei auf Laufwerk U in Teilen laden.
+; So viele Bytes vom Ende des vorigen Teils stehen am Anfang des
+; naechsten Teils noch einmal (0 bis 8000)
+POVL    = 500
+        .cerror POVL>8000, "POVL zu gross"
 
 ; Option: Ersatzzeichen am Bildschirm
 ; Zeichen, die der C64 nicht darstellen kann, werden mit diesen
@@ -100,6 +118,13 @@ ALT_SZ          = 194           ; scharfes s  invertiertes B
 ALT_LAQUO       = 188           ; Guillemet links (171)   invertiertes <
 ALT_RAQUO       = 190           ; Guillemet rechts (187)  invertiertes >
 
+; Option: Dateiendungen, die nicht geladen und nicht gespeichert
+; werden (Disk-Images, Programme usw.). Grossbuchstaben, durch
+; Leerzeichen getrennt, beim Vergleich ist Gross/Klein egal.
+BLOCKED .macro
+        .text "D64 G64 D71 G71 D81 DNP ISO CRT TAP T64 REU SID PRG ZIP"
+        .endm
+
 ; ---- Speicheraufteilung
 BUF     = $4000                 ; Textspeicher: Anfang
 BUFEND  = $cf00                 ; Textspeicher: Ende
@@ -116,6 +141,21 @@ TEXTCOL = 15                    ; Textfarbe (hellgrau)
 BGCOL   = 6                     ; Hintergrund (dunkelblau)
 CHARRAM = $3000                 ; Zeichensatz im RAM (2 KB)
 BORDCOL = 6                     ; Rahmenfarbe (0 schwarz, 6 blau, 11 grau)
+DIRCOL  = 11                    ; Rahmenfarbe bei Laufwerksinhalt $ (11 dunkelgrau)
+
+; ---- UCI-Schnittstelle (Ultimate 64, C64 Ultimate, Ultimate-II+)
+UCI_CTRL = $df1c                ; schreiben: Steuerung, lesen: Zustand
+UCI_CMD  = $df1d                ; schreiben: Befehl, lesen: Kennung ($C9)
+UCI_DATA = $df1e                ; lesen: Antwortdaten
+UCI_STAT = $df1f                ; lesen: Statustext
+UCBUF    = $3800                 ; Befehlspuffer (512 Bytes)
+URBUF   = $3a00                 ; Antwortpuffer (1024 Bytes)
+USTAT   = $3e00                 ; Statustext der UCI (80 Bytes)
+;   Zu grosse Dateien (Laufwerk U) werden in Teilen geladen
+PLEN    = $8000                 ; hoechstens 32 KByte pro Teil lesen
+PMARG   = 2048                  ; Reserve, um das Zeilenende zu finden
+PSTEP   = PLEN-POVL-PMARG       ; Abstand der Teile in der Datei
+UNAMEL  = 25                    ; Dateiname bei UCI: hoechstens 25 Zeichen
 
 ; ---- Betriebssystem-Routinen (KERNAL)
 SETLFS  = $ffba
@@ -129,6 +169,8 @@ CHRIN   = $ffcf
 CHROUT  = $ffd2
 GETIN   = $ffe4
 READST  = $ffb7
+LISTEN  = $ffb1
+UNLSN   = $ffae
 CLALL   = $ffe7
 
 ; ---------------------------------------------------------------------
@@ -168,6 +210,8 @@ sc      = $f7                   ; Bildschirmzeiger
 sz      = $f9                   ; Anzahl Bytes beim Verschieben
 p       = $fb                   ; Zeiger auf Textstelle
 q       = $fd                   ; Zeiger auf Textstelle
+ur      = $50                   ; Zeiger in den UCI-Antwortpuffer
+ux      = $52                   ; Zeiger in den UCI-Befehlspuffer
 
 ; ---- Makros
 inc16   .macro
@@ -342,6 +386,8 @@ start   lda #$36                ; BASIC-ROM aus, KERNAL und Ein-/Ausgabe an
         ldy #7                  ; Zeichen \ aus dem Grossschrift-Satz
 -       lda $d000+$4d*8,y       ; ($4D) ersetzt das Pfundzeichen
         sta CHARRAM+$1c*8,y     ; (Bildschirmcode $1C)
+        eor #$ff                ; invertiert auch fuer den Cursor
+        sta CHARRAM+$9c*8,y     ; (Bildschirmcode $9C)
         dey
         bpl -
         lda #$36
@@ -374,6 +420,7 @@ start   lda #$36                ; BASIC-ROM aus, KERNAL und Ein-/Ausgabe an
         sta statshow
         sta flen
         jsr newtext
+        jsr ucidet              ; UCI-Schnittstelle vorhanden?
 
 ; ---------------------------------------------------------------------
 ;  Hauptschleife
@@ -1201,7 +1248,9 @@ fc_set  lda p
 fc_found
         jmp calccol             ; Spalte des Cursors berechnen
 
-draw    lda top
+draw    lda #BORDCOL            ; Textbereich: normale Rahmenfarbe
+        sta $d020
+        lda top
         sta p
         lda top+1
         sta p+1
@@ -1389,6 +1438,87 @@ drawhelp
         #msg m_help
         rts
 
+; Zahl eingeben (bis 5 Ziffern), Wert in uval
+; Carry gesetzt: keine gueltige Zahl, A = $03: STOP gedrueckt
+getnum  lda #0
+        sta tmp2                ; Anzahl Ziffern
+gq_lp   jsr getkey
+        cmp #$0d
+        beq gq_done
+        cmp #$03
+        beq gq_stop
+        cmp #$14
+        beq gq_bs               ; DEL: letzte Ziffer loeschen
+        cmp #'0'
+        bcc gq_lp
+        cmp #'9'+1
+        bcs gq_lp
+        ldx tmp2
+        cpx #5
+        bcs gq_lp               ; mehr als 5 Ziffern gibt es nicht
+        sta dbuf,x
+        inc tmp2
+        jsr stputc
+        jmp gq_lp
+gq_bs   lda tmp2                ; keine Ziffer vorhanden
+        beq gq_lp
+        dec tmp2
+        dec stcol               ; Ziffer auf dem Bildschirm loeschen
+        ldx stcol
+        lda #$a0
+        sta STAT,x
+        jmp gq_lp
+gq_stop lda #$03                ; STOP
+        sec
+        rts
+gq_no   lda #0                  ; keine gueltige Zahl
+        sec
+        rts
+
+; RETURN: aus den Ziffern den Wert (16 Bit) berechnen
+gq_done lda tmp2
+        beq gq_no
+        lda #0
+        sta uval
+        sta uval+1
+        tax
+gq_dlp   asl uval                ; Wert x 10
+        rol uval+1
+        bcs gq_no
+        lda uval
+        sta u2
+        lda uval+1
+        sta u2+1                ; u2 = Wert x 2
+        asl uval
+        rol uval+1
+        bcs gq_no
+        asl uval
+        rol uval+1
+        bcs gq_no
+        clc                     ; x8 + x2
+        lda uval
+        adc u2
+        sta uval
+        lda uval+1
+        adc u2+1
+        sta uval+1
+        bcs gq_no
+        lda dbuf,x              ; plus die Ziffer
+        sec
+        sbc #'0'
+        clc
+        adc uval
+        sta uval
+        bcc +
+        inc uval+1
+        beq gq_no               ; Ueberlauf ueber 65535
++       inx
+        cpx tmp2
+        beq +
+        jmp gq_dlp
++       clc
+        rts
+
 confirm jsr getkey              ; J oder Y = Ja (Carry-Bit gesetzt)
         cmp #$4a
         beq cf_y
@@ -1407,6 +1537,8 @@ k_new   jsr stclear
         jsr confirm
         bcc +
         jsr newtext
+        lda #0                  ; neuer Text: kein Schreibschutz
+        sta trunc
 +       rts
 
 k_quit  jsr stclear
@@ -1420,78 +1552,10 @@ k_quit  jsr stclear
 
 k_code  jsr stclear
         #msg m_code
-        lda #0
-        sta tmp2                ; Anzahl Ziffern
-kc_lp   jsr getkey
-        cmp #$0d
-        beq kc_done
-        cmp #$03
-        beq kc_no
-        cmp #$14
-        beq kc_bs               ; DEL: letzte Ziffer loeschen
-        cmp #'0'
-        bcc kc_lp
-        cmp #'9'+1
-        bcs kc_lp
-        ldx tmp2
-        cpx #5
-        bcs kc_lp               ; mehr als 5 Ziffern gibt es nicht
-        sta dbuf,x
-        inc tmp2
-        jsr stputc
-        jmp kc_lp
-kc_bs   lda tmp2                ; keine Ziffer vorhanden
-        beq kc_lp
-        dec tmp2
-        dec stcol               ; Ziffer auf dem Bildschirm loeschen
-        ldx stcol
-        lda #$a0
-        sta STAT,x
-        jmp kc_lp
+        jsr getnum
+        bcc kc_ok
 kc_no   rts
-
-; RETURN: aus den Ziffern den Wert (16 Bit) berechnen
-kc_done lda tmp2
-        beq kc_no
-        lda #0
-        sta uval
-        sta uval+1
-        tax
-kd_lp   asl uval                ; Wert x 10
-        rol uval+1
-        bcs kc_no
-        lda uval
-        sta u2
-        lda uval+1
-        sta u2+1                ; u2 = Wert x 2
-        asl uval
-        rol uval+1
-        bcs kc_no
-        asl uval
-        rol uval+1
-        bcs kc_no
-        clc                     ; x8 + x2
-        lda uval
-        adc u2
-        sta uval
-        lda uval+1
-        adc u2+1
-        sta uval+1
-        bcs kc_no
-        lda dbuf,x              ; plus die Ziffer
-        sec
-        sbc #'0'
-        clc
-        adc uval
-        sta uval
-        bcc +
-        inc uval+1
-        beq kc_no               ; Ueberlauf ueber 65535
-+       inx
-        cpx tmp2
-        beq +
-        jmp kd_lp
-+
+kc_ok
 ; Wert in UTF-8 Bytes umwandeln (ubuf, ulen)
         lda uval+1
         bne kc_ge256
@@ -1596,11 +1660,31 @@ hi6     lda uval+1
 ;  Dateien
 ; ---------------------------------------------------------------------
 ; Dateinamen abfragen (bleibt gespeichert)
-; gnp = Adresse des Hinweistexts (Save file: / Load file:)
+; gnp = Adresse des Hinweistexts (SAVE: / LOAD:)
 ; CRSR hoch/runter: Laufwerk 8-11 waehlen
 ; Name $ zeigt das Inhaltsverzeichnis, danach erneute Abfrage
 ; Carry-Bit gesetzt: abgebrochen
-getname jsr stclear
+getname lda device              ; UCI gewaehlt, aber nicht mehr da?
+        bne gn_go
+        jsr ucihere
+        bcc gn_go
+        lda #8                  ; auf Laufwerk 8 wechseln
+        sta device
+        lda ucion
+        beq gn_go
+        lda #0                  ; einmal melden, warum
+        sta ucion
+        ldx #0
+-       lda m_unact,x
+        sta msgbuf,x
+        beq +
+        inx
+        bne -
++       jsr stclear
+        jsr showdrv
+        jsr getkey
+gn_go   jsr gnsetmax
+        jsr stclear
         lda gnp                 ; Hinweistext ausgeben
         sta p
         lda gnp+1
@@ -1616,7 +1700,9 @@ getname jsr stclear
 +       jsr gn_drv              ; Laufwerk rechts anzeigen
 gn_lp   jsr getkey
         cmp #$0d
-        beq gn_ok
+        bne +
+        jmp gn_ok
++
         cmp #$03                ; STOP: abbrechen
         bne +
         sec
@@ -1627,13 +1713,24 @@ gn_lp   jsr getkey
         cmp #$11
         beq gn_dn               ; CRSR runter: naechstes Laufwerk
         cmp #$91
-        beq gn_up               ; CRSR hoch: vorheriges Laufwerk
+        bne +
+        jmp gn_up               ; CRSR hoch: vorheriges Laufwerk
++       cmp #$20
+        bcc gn_lp
+        ldx device              ; UCI: Zeichen wie im Text (ASCII)
+        bne gn_iec
+        jsr p2a
         cmp #$20
         bcc gn_lp
-        cmp #$60
+        cmp #$7f
+        bcs gn_lp
+        bcc gn_put
+gn_iec  cmp #$60                ; Diskette: wie bisher
+        bcs gn_lp
+gn_put  jsr badchr              ; im Namen nicht erlaubt?
         bcs gn_lp
         ldx flen
-        cpx #16
+        cpx gnmax
         bcs gn_lp
         sta fname,x
         inc flen
@@ -1647,24 +1744,66 @@ gn_bs   lda flen
         lda #$a0
         sta STAT,x
         jmp gn_lp
-gn_dn   inc device
+; Reihenfolge der Laufwerke: UCI (wenn vorhanden), 8, 9, 10, 11
+gn_dn   lda device
+        sta gnold
+        beq gd_8                ; UCI -> 8
+        inc device
         lda device
         cmp #12
+        bcc gn_new
+        lda ucion
+        beq gd_8
+        lda #0                  ; 11 -> UCI
+        beq gd_set
+gd_8    lda #8
+gd_set  sta device
+gn_new  lda gnold               ; Wechsel zwischen UCI und Diskette?
+        bne gw_iec
+        lda device
+        beq gw_ok               ; UCI -> UCI
+        jsr nm_up               ; UCI -> Diskette: Grossbuchstaben
+        jmp gw_ok
+gw_iec  lda device
+        bne gw_ok               ; Diskette -> Diskette
+        jsr nm_low              ; Diskette -> UCI: Kleinbuchstaben
+gw_ok   jsr nm_clean            ; nicht erlaubte Zeichen entfernen
+        lda device              ; auf UCI gewechselt: Ordnerinhalt zeigen
+        bne +
+        jsr autodir
++
+        jsr gnsetmax            ; Name ggf. kuerzen, Abfrage neu zeigen
+        lda flen
+        cmp gnmax
         bcc +
-        lda #8
-        sta device
-+       jsr gn_drv
-        jmp gn_lp
-gn_up   dec device
+        lda gnmax
+        sta flen
++       jmp getname
+gn_up   lda device
+        sta gnold
+        beq gu_11               ; UCI -> 11
+        dec device
         lda device
         cmp #8
-        bcs +
-        lda #11
-        sta device
-+       jsr gn_drv
-        jmp gn_lp
+        bcs gn_new
+        lda ucion
+        beq gu_11
+        lda #0                  ; 8 -> UCI
+        beq gd_set
+gu_11   lda #11
+        bne gd_set
 gn_ok   lda flen
-        beq gn_no
+        bne +
+        jmp gn_lp               ; leerer Name: RETURN ignorieren
++       lda device              ; UCI: Ordner wechseln?
+        bne gn_dol
+        jsr isdirnm
+        bcc gn_dol
+        jsr ucicd
+        bcc +
+        jsr getkey              ; Fehler: Meldung lesen, Name bleibt
++       jmp getname
+gn_dol  lda flen
         cmp #1                  ; Name $ = Inhaltsverzeichnis
         bne gn_ret
         lda fname
@@ -1681,34 +1820,173 @@ gn_ret  clc
 gn_no   sec
         rts
 
-; "Drive n" rechts in der Statuszeile anzeigen (Spalten 32-39)
-gn_drv  ldy #0
+; Ist das Zeichen in A im Dateinamen verboten?  Carry gesetzt: ja
+; (beim Laden, gload = 1, sind die Platzhalter * und ? erlaubt)
+; Diskette: * ? , : = " /   (DOS-Befehle, Platzhalter, Unterordner)
+; UCI:      * ? : " < > | \ (im FAT-Dateisystem nicht erlaubt)
+; A und X bleiben erhalten (Y wird veraendert)
+badchr  stx bcx
+        ldx gload               ; beim Laden sind * und ? erlaubt
+        beq bc_chk
+        cmp #'*'
+        beq bc_n
+        cmp #'?'
+        beq bc_n
+bc_chk  ldx #0
+        ldy device
+        bne bc_iec
+-       cmp bad_uci,x
+        beq bc_y
+        inx
+        cpx #8
+        bcc -
+        bcs bc_n
+bc_iec
+-       cmp bad_iec,x
+        beq bc_y
+        inx
+        cpx #7
+        bcc -
+bc_n    ldx bcx
+        clc
+        rts
+bc_y    ldx bcx
+        sec
+        rts
+bad_iec .text "*?,:=", $22, "/"
+bad_uci .text "*?:", $22, "<>|", $5c
+
+; Verbotene Zeichen aus dem Dateinamen entfernen (nach Laufwerkswechsel)
+nm_clean
+        ldx #0                  ; X = lesen, Y = schreiben
+        ldy #0
+-       cpx flen
+        beq +
+        lda fname,x
+        sty bcy
+        jsr badchr
+        ldy bcy
+        bcs nc_skip
+        sta fname,y
+        iny
+nc_skip inx
+        bne -
++       sty flen
+        rts
+
+; Dateinamen in Grossbuchstaben (a-z -> A-Z), fuer Diskette
+nm_up   ldx #0
+-       cpx flen
+        beq +
+        lda fname,x
+        jsr upcase
+        sta fname,x
+        inx
+        bne -
++       rts
+
+; Dateinamen in Kleinbuchstaben (A-Z -> a-z), fuer UCI
+nm_low  ldx #0
+-       cpx flen
+        beq +
+        lda fname,x
+        cmp #'A'
+        bcc nl_nx
+        cmp #'Z'+1
+        bcs nl_nx
+        ora #$20
+        sta fname,x
+nl_nx   inx
+        bne -
++       rts
+
+; Bei UCI den Inhalt des aktuellen Ordners zeigen (bei F1/F3 und
+; beim Wechsel auf Drive U).  Bei einem Fehler auf eine Taste warten.
+autodir lda device
+        bne ad_rt
+        lda ucion
+        beq ad_rt
+        jsr ucihere
+        bcs ad_rt
+        jsr showdir
+        bcc ad_rt
+        jsr getkey              ; Fehlermeldung lesen lassen
+ad_rt   rts
+
+; Hoechstlaenge des Namens setzen: UCI 25, Diskette 16
+gnsetmax
+        lda #16
+        ldx device
+        bne +
+        lda #UNAMEL
++       sta gnmax
+        rts
+
+; "Drive n" rechtsbuendig in der Statuszeile anzeigen
+; (Drive 8 / Drive 10 / Drive U, endet in Spalte 39)
+gn_drv  ldy #0                  ; Text in lbuf zusammensetzen
 -       lda m_drv,y
         beq +
-        jsr gd_put
+        sta lbuf,y
+        iny
         bne -
 +       lda device
-        cmp #10
+        bne gd_num
+        ldx #0                  ; UCI
+-       lda m_uci,x
+        beq gd_out
+        sta lbuf,y
+        iny
+        inx
+        bne -
+gd_num  cmp #10
         bcc gd_1
         lda #'1'                ; zweistellig: 10, 11
-        jsr gd_put
+        sta lbuf,y
+        iny
         lda device
         sec
         sbc #10
 gd_1    clc
         adc #'0'
-        jsr gd_put
-        lda #$a0                ; Rest leeren
--       cpy #8
-        bcs +
-        sta STAT+32,y
+        sta lbuf,y
         iny
-        bne -
-+       rts
-gd_put  jsr a2s
+gd_out  sty llen                ; Startspalte = 40 - Laenge
+        sec
+        lda #40
+        sbc llen
+        tay
+        ldx #0
+-       lda lbuf,x
+        stx dx
+        jsr a2s
+        ldx dx
         ora #$80
-        sta STAT+32,y
+        sta STAT,y
         iny
+        inx
+        cpx llen
+        bne -
+        rts
+
+; Ist der Name ein Ordnerwechsel?  ".." oder Name mit / am Ende
+; Carry gesetzt: ja
+isdirnm lda flen
+        cmp #2
+        bne +
+        lda fname
+        cmp #'.'
+        bne +
+        lda fname+1
+        cmp #'.'
+        beq id_y
++       ldx flen
+        lda fname-1,x
+        cmp #'/'
+        beq id_y
+        clc
+        rts
+id_y    sec
         rts
 
 ; ---------------------------------------------------------------------
@@ -1740,7 +2018,9 @@ diropen lda #0
         sta deof
         ldx #2
         jsr CHKIN
-        jsr dgetb               ; Ladeadresse (2 Bytes)
+        bcc +
+        jmp do_bad              ; Laufwerk antwortet nicht
++       jsr dgetb               ; Ladeadresse (2 Bytes)
         jsr dgetb
         clc
         rts
@@ -1797,10 +2077,15 @@ dl_end  sec
 
 ; Inhaltsverzeichnis im Textbereich anzeigen (seitenweise)
 ; Carry gesetzt: Fehler (Meldung steht in der Statuszeile)
-showdir jsr diropen
+showdir lda device
+        bne +
+        jmp ucidir              ; UCI-Verzeichnis
++       jsr diropen
         bcc +
         rts
-+       lda #0
++       lda #DIRCOL             ; Laufwerksinhalt: eigene Rahmenfarbe
+        sta $d020
+        lda #0
         sta drow2
 sd_lp   jsr dline
         bcs sd_end
@@ -1832,8 +2117,11 @@ sd_more jsr CLRCHN
         jsr getkey
         pha
         ldx #2
-        jsr CHKIN
-        pla
+        jsr CHKIN               ; (Fehler: dgetb liest dann Ende)
+        bcc +
+        lda #1
+        sta deof
++       pla
         cmp #$03
         beq +
         clc
@@ -2154,7 +2442,17 @@ usename ldx #15
 ; Kommandokanal 15 des Laufwerks oeffnen
 ; Vorher SETNAM aufrufen (setzt den Dateinamen)
 ; Carry gesetzt: Fehler
-open15  lda #15
+; Zuerst kurz anrufen (LISTEN/UNLSN): ein fehlendes Laufwerk
+; wird so sofort erkannt. Spaeter wuerde CHKIN ewig warten.
+open15  lda #0
+        sta $90                 ; Status loeschen
+        lda device
+        jsr LISTEN
+        jsr UNLSN
+        jsr READST
+        and #$80                ; Geraet fehlt?
+        bne o15e
+        lda #15
         ldx device
         ldy #15
         jsr SETLFS
@@ -2168,10 +2466,13 @@ o15e    sec
         rts
 
 ; Meldung des Laufwerks lesen und in msgbuf ablegen
-; (endet mit 0)
+; (endet mit 0).  Antwortet das Laufwerk nicht, steht dort
+; "Drive not ready!" (sonst wuerde CHRIN auf die Tastatur warten)
 drvstat ldx #15
         jsr CHKIN
-        ldy #0
+        bcc +
+        jmp nodrive
++       ldy #0
 -       jsr CHRIN
         cmp #$0d
         beq +
@@ -2182,6 +2483,16 @@ drvstat ldx #15
 +       lda #0
         sta msgbuf,y
         jmp CLRCHN
+
+; Laufwerk antwortet nicht: Eingabe zuruecksetzen, Meldung ablegen
+nodrive jsr CLRCHN
+        ldx #0
+-       lda m_dev+1,x
+        sta msgbuf,x
+        beq +
+        inx
+        bne -
++       rts
 
 showdrv ldy #0
 -       lda msgbuf,y
@@ -2205,6 +2516,7 @@ dev_err jsr CLALL
         #msg m_dev
         lda #1
         sta statshow
+        sec                     ; Fehler
         rts
 
 ; Speichern mit Platzpruefung:
@@ -2216,9 +2528,58 @@ k_save  lda #<m_sname
         sta gnp
         lda #>m_sname
         sta gnp+1
-        jsr getname
+        lda #0                  ; Speichern: keine Platzhalter
+        sta gload
+        jsr haswild             ; gemerkter Name mit * oder ?
         bcc +
+        lda #0                  ; (z.B. nach LOAD BR*): Name leeren
+        sta flen
++
+        jsr autodir             ; UCI: Ordnerinhalt gleich zeigen
+ks_ask  jsr getname
+        bcc +
+        rts                     ; STOP
++       jsr trchk               ; gekuerzter Text auf das Original?
+        bcc +
+        jsr stclear
+        #msg m_trunc
+        jsr getkey
+        jmp ks_ask
++       jsr extchk              ; gesperrte Dateiendung?
+        bcc +
+        jsr ushow_ft
+        jsr getkey
+        jmp ks_ask
++       jsr shsave              ; sofort "SAVING..." zeigen
+        lda #0
+        sta nokey
+        jsr ks_do
+        bcc ks_rt
+        lda nokey               ; "nicht ersetzen": gleich zurueck
+        bne +
+        jsr getkey              ; Fehler: Meldung lesen lassen
++       jmp ks_ask
+ks_rt   rts
+
+; Datei gibt es schon: ersetzen?  Carry gesetzt: ja
+; Bei Nein ist nokey = 1 (zurueck in die Abfrage ohne Tastendruck)
+askrepl jsr stclear
+        #msg m_repl
+        jsr confirm
+        bcs shsave              ; ja: weiter mit "SAVING..."
+        lda #1
+        sta nokey
+        clc
         rts
+
+; "SAVING..." in der Statuszeile zeigen (Carry bleibt gesetzt)
+shsave  jsr stclear
+        #msg m_sving
+        sec
+        rts
+ks_do   lda device
+        bne +
+        jmp usave               ; Speichern ueber UCI
 +       jsr dirscan             ; freie Bloecke und alte Datei
         bcc +
         rts                     ; Laufwerk nicht bereit (Meldung steht)
@@ -2230,7 +2591,11 @@ k_save  lda #<m_sname
         jsr fitfree
         bcs ks_plain
         bcc ks_full
-ks_old  lda dok                 ; alte Datei vorhanden
+ks_old  jsr askrepl             ; alte Datei vorhanden: ersetzen?
+        bcs +
+        sec                     ; nein
+        rts
++       lda dok
         beq ks_safe             ; Platz unbekannt: sicher speichern
         jsr fitfree
         bcs ks_safe
@@ -2240,6 +2605,7 @@ ks_full jsr stclear
         #msg m_dfull
         lda #1
         sta statshow
+        sec                     ; Fehler
         rts
 
 ; direkt speichern: alte Datei loeschen, dann schreiben
@@ -2254,8 +2620,7 @@ ks_plain
         jsr wrtext
         bcc +
         jmp dev_err
-+       jsr stclear
-        jmp showdrv
++       jmp shownok
 
 ; sicher speichern ueber die Hilfsdatei TE64.TMP
 ks_safe jsr usetmp
@@ -2279,12 +2644,13 @@ ks_safe jsr usetmp
         lda #15
         jsr CLOSE
         jsr CLRCHN
-        jsr stclear
-        jmp showdrv
+        jmp shownok
 ks_werr jsr stclear             ; Schreibfehler zeigen,
         jsr showdrv             ; Hilfsdatei loeschen,
         jsr scratch             ; alte Datei bleibt erhalten
-        jmp usename
+        jsr usename
+        sec
+        rts
 ks_dev  jsr usename
         jmp dev_err
 
@@ -2337,7 +2703,11 @@ wrtext  lda #0
         jsr OPEN
         ldx #2
         jsr CHKOUT
-        jsr tstart
+        bcc +
+        jsr closeall            ; Laufwerk antwortet nicht
+        sec
+        rts
++       jsr tstart
 sv_lp   ldx #0
         lda (p,x)
         beq sv_end              ; Endemarke
@@ -2362,13 +2732,36 @@ sv_end  jsr CLRCHN
         clc
         rts
 
+; Laden: nach einem Fehler auf eine Taste warten und zurueck in die
+; Abfrage (der Name bleibt zum Korrigieren stehen)
 k_load  lda #<m_lname
         sta gnp
         lda #>m_lname
         sta gnp+1
-        jsr getname
+        lda #1                  ; Laden: Platzhalter * und ? erlaubt
+        sta gload
+        jsr autodir             ; UCI: Ordnerinhalt gleich zeigen
+kl_ask  jsr getname
         bcc +
-        rts
+        rts                     ; STOP
++       jsr stclear             ; sofort "LOADING..." zeigen
+        #msg m_lding
+        lda #0
+        sta nokey
+        sta upart
+        jsr kl_do
+        bcc kld_rt
+        lda nokey               ; Teilabfrage mit STOP verlassen
+        bne +
+        jsr getkey              ; Fehler: Meldung lesen lassen
++       jmp kl_ask
+kld_rt  rts
+kl_do   jsr extchk              ; gesperrte Dateiendung?
+        bcc +
+        jmp ushow_ft
++       lda device
+        bne +
+        jmp uload               ; Laden ueber UCI
 +       lda #0
         jsr SETNAM
         jsr open15
@@ -2390,11 +2783,14 @@ k_load  lda #<m_lname
         beq ld_ok
 ld_bad  jmp ld_err
 ld_ok
-        jsr newtext
-        lda #0
-        sta toobig
         ldx #2
         jsr CHKIN
+        bcc +
+        jmp ld_err              ; Laufwerk antwortet nicht
++       jsr newtext
+        jsr trmark              ; bis zum Ende: Text unvollstaendig
+        lda #0
+        sta toobig
 ld_lp   jsr CHRIN
         sta chr
         jsr READST
@@ -2418,25 +2814,1640 @@ ld_st   lda chr
         #inc16 gs
 ld_nx   lda tmp
         beq ld_lp               ; Status 0: Datei noch nicht zu Ende
-ld_fin  jsr setgap
-        jsr closeall
+ld_fin  jsr closeall
+ld_tail jsr setgap
         jsr k_clr               ; Cursor an den Textanfang
         lda cur
         sta top
         lda cur+1
         sta top+1
         jsr stclear
+        lda upart               ; Teil geladen: Schreibschutz bleibt
+        beq ld_whole
+        #msg m_part
+        lda ukk
+        ldx ukk+1
+        jsr prnum
+        #msg m_pof
+        lda unum
+        ldx unum+1
+        jsr prnum
+        #msg m_pld
+        jmp ld_end
+ld_whole
         lda toobig
         beq +
         #msg m_big
         jmp ld_end
-+       #msg m_loaded
++       lda #0                  ; ganz geladen: kein Schreibschutz
+        sta trunc
+        #msg m_loaded
 ld_end  lda #1
         sta statshow
+        clc                     ; geladen
         rts
 ld_err  jsr closeall
         jsr stclear
+        jsr showdrv
+        sec                     ; Fehler
+        rts
+
+; Laufwerksmeldung zeigen, Carry gesetzt wenn sie nicht mit 00 beginnt
+shownok jsr stclear
+        jsr showdrv
+        lda msgbuf
+        cmp #'0'
+        bne +
+        lda msgbuf+1
+        cmp #'0'
+        bne +
+        clc
+        rts
++       sec
+        rts
+
+
+; ---------------------------------------------------------------------
+;  UCI-Schnittstelle (Ultimate Command Interface)
+;  Befehl: Bytes nach UCI_CMD, dann Bit 0 in UCI_CTRL.
+;  Antwort: Zustand in UCI_CTRL (Bit 4-5), Daten aus UCI_DATA (Bit 7),
+;  Statustext aus UCI_STAT (Bit 6), quittieren mit Bit 1 in UCI_CTRL.
+; ---------------------------------------------------------------------
+; UCI erkennen: Kennung $C9 mehrmals lesbar und IDENTIFY antwortet
+; Danach in den Startordner wechseln (m_uhome)
+ucidet  lda #0
+        sta ucion
+        ldx #16
+-       lda UCI_CMD             ; Kennung: $C9 (oder $49 mit IRQ)
+        and #$7f
+        cmp #$49
+        bne ud_rt
+        nop
+        nop
+        dex
+        bne -
+        lda #$01                ; IDENTIFY
+        jsr ucmd
+        jsr ucirun
+        bcs ud_rt               ; keine Antwort
+        jsr uciok
+        bcs ud_rt
+        lda #1
+        sta ucion
+        lda #0                  ; UCI ist das erste Laufwerk
+        sta device
+        lda #$11                ; CHANGE_DIR Startordner (m_uhome)
+        jsr ucmd
+        ldx #0
+-       lda m_uhome,x
+        beq +
+        jsr uaddb
+        inx
+        bne -
++       jsr ucirun
+ud_rt   rts
+
+; Ist die Schnittstelle eingeblendet?  Kennung $C9 (oder $49 mit IRQ)
+; Carry gesetzt: nein
+ucihere lda UCI_CMD
+        and #$7f
+        cmp #$49
+        bne +
+        clc
+        rts
++       sec
+        rts
+
+; Befehl beginnen: Ziel DOS (1) und Befehlsbyte aus A
+; Antwortdaten werden danach verworfen (ucbv = cb_none)
+ucmd    pha
+        lda #$01
+        sta UCBUF
+        pla
+        sta UCBUF+1
+        lda #2
+        sta ucl
+        lda #0
+        sta ucl+1
+        lda #<cb_none
+        sta ucbv
+        lda #>cb_none
+        sta ucbv+1
+        rts
+
+; Byte aus A an den Befehl anhaengen (A und X bleiben erhalten)
+uaddb   sta ubt
+        clc
+        lda #<UCBUF
+        adc ucl
+        sta ux
+        lda #>UCBUF
+        adc ucl+1
+        sta ux+1
+        lda ubt
+        ldy #0
+        sta (ux),y
+        inc ucl
+        bne +
+        inc ucl+1
++       rts
+
+; Dateinamen anhaengen
+uaddname
+        ldx #0
+-       cpx flen
+        beq +
+        lda fname,x
+        jsr uaddb
+        inx
+        bne -
++       rts
+
+; Hilfsnamen TE64.TMP anhaengen
+uaddtmp ldx #0
+-       lda m_tmp,x
+        beq +
+        jsr uaddb
+        inx
+        bne -
++       rts
+
+; Befehl senden und Antwort abarbeiten
+; Jeder Antwortblock (Daten in URBUF, Laenge url) geht an die
+; Routine in ucbv; sie meldet mit Carry gesetzt: abbrechen.
+; Statustext steht danach in USTAT (mit 0 am Ende), Laenge ustl.
+; Carry gesetzt: keine Antwort (Zeitgrenze), USTAT enthaelt Meldung
+ucirun  lda #0
+        sta ustl
+        sta uabort
+        jsr ucihere             ; Schnittstelle noch eingeblendet?
+        bcc +
+        jmp ur_gone
++       jsr uciidle
+        bcs ur_to
+        lda #<UCBUF              ; Befehl schreiben
+        sta ux
+        lda #>UCBUF
+        sta ux+1
+        ldy #0
+        ldx ucl+1
+        beq ur_rest
+-       lda (ux),y              ; volle 256-Byte-Seiten
+        sta UCI_CMD
+        iny
+        bne -
+        inc ux+1
+        dex
+        bne -
+ur_rest ldx ucl
+        beq ur_push
+-       lda (ux),y
+        sta UCI_CMD
+        iny
+        dex
+        bne -
+ur_push lda #$01                ; Befehl absenden
+        sta UCI_CTRL
+ur_blk  jsr uciwait              ; auf gueltige Antwort warten
+        bcs ur_to
+        sta ust                 ; 2 = letzter Block, 3 = weitere
+        jsr ucirdat             ; Daten und Status lesen
+        jsr ucicb               ; Block verarbeiten
+        bcs ur_ab
+        jsr uciack              ; quittieren
+        bcs ur_to
+        lda ust
+        cmp #3
+        beq ur_blk              ; weitere Bloecke folgen
+ur_ab   lda #1                  ; abgebrochen
+        sta uabort
+        jsr uciabrt
+ur_end  ldx ustl
+        lda #0
+        sta USTAT,x
+        clc
+        rts
+ur_gone lda #0                  ; Schnittstelle nicht da
+        sta ucion
+        ldx #0
+-       lda m_unact,x
+        sta USTAT,x
+        beq +
+        inx
+        bne -
++       stx ustl
+        sec
+        rts
+ur_to   lda UCI_CTRL            ; Statusregister fuer die Diagnose
+        sta ustreg
+        jsr uciabrt             ; Zeitgrenze: abbrechen, Meldung
+        ldx #0
+-       lda m_uto,x
+        sta USTAT,x
+        beq +
+        inx
+        bne -
++       lda #' '                ; Diagnose: Befehl, Stelle, Status
+        sta USTAT,x
+        inx
+        lda UCBUF+1             ; Befehlsbyte
+        jsr uhex
+        lda #' '
+        sta USTAT,x
+        inx
+        lda #'W'
+        sta USTAT,x
+        inx
+        lda uwhere
+        clc
+        adc #'0'
+        sta USTAT,x
+        inx
+        lda #' '
+        sta USTAT,x
+        inx
+        lda #'$'
+        sta USTAT,x
+        inx
+        lda ustreg
+        jsr uhex
+        lda #0
+        sta USTAT,x
+        stx ustl
+        sec
+        rts
+
+; Byte in A als zwei Hex-Ziffern nach USTAT,x schreiben
+uhex    pha
+        lsr
+        lsr
+        lsr
+        lsr
+        jsr uh_d
+        pla
+        and #$0f
+uh_d    cmp #10
+        bcc +
+        adc #6                  ; A-F (Carry ist gesetzt)
++       adc #'0'
+        sta USTAT,x
+        inx
+        rts
+
+ucicb   jmp (ucbv)
+cb_none clc
+        rts
+
+; Daten (nach URBUF, Laenge url) und Status (an USTAT) lesen
+ucirdat lda #<URBUF
+        sta ur
+        lda #>URBUF
+        sta ur+1
+        lda #0
+        sta url
+        sta url+1
+        ldy #0
+rd_lp   lda UCI_CTRL
+        bpl rd_st               ; keine Daten mehr
+        lda UCI_DATA
+        ldx url+1
+        cpx #4                  ; hoechstens 1024 Bytes ablegen
+        bcs rd_lp
+        sta (ur),y
+        inc ur
+        bne +
+        inc ur+1
++       inc url
+        bne rd_lp
+        inc url+1
+        jmp rd_lp
+rd_st   lda UCI_CTRL
+        and #$40
+        beq rd_rt               ; kein Status mehr
+        lda UCI_STAT
+        ldx ustl
+        cpx #79
+        bcs rd_st
+        sta USTAT,x
+        inc ustl
+        jmp rd_st
+rd_rt   rts
+
+; Warten, solange die UCI beschaeftigt ist
+; A = Zustand danach: 0 Leerlauf, 2 letzte Daten, 3 weitere Daten
+; Carry gesetzt: keine Antwort (nach etwa 6 Sekunden)
+uciwait lda #2                  ; Stelle fuer die Diagnose
+        sta uwhere
+        jsr utoset
+uw_lp   lda UCI_CTRL
+        tax
+        and #$08                ; Fehlerbit: Befehl nicht angenommen
+        bne uw_er
+        txa
+        and #$20                ; Bit 5: Antwort liegt vor
+        bne uw_ok
+        jsr utodec
+        bcc uw_lp
+        rts
+uw_er   lda #4                  ; Diagnose: Stelle 4 = Fehlerbit
+        sta uwhere
+        sec
+        rts
+uw_ok   txa
+        and #$30
+        lsr
+        lsr
+        lsr
+        lsr
+        clc
+        rts
+
+; Daten quittieren und warten, bis das Ultimate es bestaetigt hat
+; Carry gesetzt: keine Antwort
+uciack  lda #3                  ; Stelle fuer die Diagnose
+        sta uwhere
+        lda #$02
+        sta UCI_CTRL
+        jsr utoset
+-       lda UCI_CTRL
+        and #$02
+        beq +
+        jsr utodec
+        bcc -
+        rts
++       clc
+        rts
+
+; Abbrechen und warten, bis die UCI wieder im Leerlauf ist
+uciabrt lda #$04
+        sta UCI_CTRL
+        jsr utoset
+-       lda UCI_CTRL
+        and #$34                ; Abbruch erledigt und Leerlauf?
+        beq +
+        jsr utodec
+        bcc -
++       rts
+
+; Vor einem Befehl: UCI muss im Leerlauf sein (Zustandsbits 0)
+; Fehlerbit loeschen; liegen noch Daten an, diese quittieren;
+; nur wenn sie haengt, abbrechen.  Carry gesetzt: keine Antwort
+uciidle lda #1                  ; Stelle fuer die Diagnose
+        sta uwhere
+        lda UCI_CTRL
+        and #$08
+        beq +
+        lda #$08                ; Fehlerbit loeschen
+        sta UCI_CTRL
++       jsr utoset
+ui_lp   lda UCI_CTRL
+        and #$34                ; Leerlauf ohne offenen Abbruch
+        beq ui_ok
+        and #$30
+        beq +                   ; nur Abbruch offen: warten
+        cmp #$10
+        beq +                   ; beschaeftigt: warten
+        lda UCI_CTRL            ; Daten liegen an: quittieren
+        and #$02
+        bne +
+        lda #$02
+        sta UCI_CTRL
++       jsr utodec
+        bcc ui_lp
+        jsr uciabrt             ; haengt: abbrechen
+        lda UCI_CTRL
+        and #$30
+        beq ui_ok
+        sec
+        rts
+ui_ok   clc
+        rts
+
+; Zeitgrenze setzen und herunterzaehlen (Carry gesetzt: abgelaufen)
+utoset  lda #0
+        sta uto
+        sta uto+1
+        lda #4
+        sta uto+2
+        rts
+utodec  lda uto
+        bne ++
+        lda uto+1
+        bne +
+        lda uto+2
+        beq ut_end
+        dec uto+2
++       dec uto+1
++       dec uto
+        clc
+        rts
+ut_end  sec
+        rts
+
+; Statustext pruefen: leer oder "00..." = in Ordnung
+; Carry gesetzt: Fehler
+uciok   lda ustl
+        beq +
+        lda USTAT
+        cmp #'0'
+        bne uo_err
+        lda USTAT+1
+        cmp #'0'
+        bne uo_err
++       clc
+        rts
+uo_err  sec
+        rts
+
+; Statustext der UCI in der Statuszeile zeigen (leer = 00,OK)
+ushow   ldx #0
+        lda ustl
+        bne +
+-       lda m_uok,x             ; leer: "00,OK" zeigen
+        sta msgbuf,x
+        beq us_sh
+        inx
+        bne -
++
+-       lda USTAT,x
+        sta msgbuf,x
+        beq us_sh
+        inx
+        cpx #39                 ; hoechstens 39 Zeichen
+        bcc -
+        lda #0
+        sta msgbuf,x
+us_sh   jsr stclear
         jmp showdrv
+
+; Statustext merken (nach msgbuf), damit ein weiterer Befehl ihn
+; nicht ueberschreibt
+umsg    jsr ushow
+        rts
+
+; ---------------------------------------------------------------------
+;  UCI: Ordner und Inhaltsverzeichnis
+; ---------------------------------------------------------------------
+; Ordner wechseln.  Der Pfad steht in fname, z.B. "TEXTE/", "..",
+; "/" oder "/USB0/TEXTE/".  Jeder Teil wird im Verzeichnis gesucht,
+; Gross/Klein egal, und mit der echten Schreibweise gewechselt.
+; Danach wird das neue Verzeichnis angezeigt.
+; Carry gesetzt: Fehler (Meldung steht, fname bleibt erhalten)
+ucicd   ldx flen                ; Laenge ohne / am Ende
+        stx cdlen
+        cpx #1
+        beq +
+        lda fname-1,x
+        cmp #'/'
+        bne +
+        dec cdlen
++       lda #0
+        sta cdpos
+        lda fname               ; / am Anfang: vom Root aus
+        cmp #'/'
+        bne cd_part
+        lda #'/'
+        sta cbuf
+        lda #1
+        sta cblen
+        jsr cd_cmd
+        bcs cd_err
+        inc cdpos
+cd_part lda cdpos               ; naechster Teil bis / oder Ende
+        cmp cdlen
+        bcs cd_done
+        ldx cdpos
+        ldy #0
+-       cpx cdlen
+        beq +
+        lda fname,x
+        cmp #'/'
+        beq +
+        sta cbuf,y
+        iny
+        inx
+        bne -
++       sty cblen
+        inx                     ; / ueberspringen
+        stx cdpos
+        lda cblen
+        beq cd_part             ; leerer Teil (z.B. //)
+        cmp #2                  ; ".." direkt wechseln
+        bne cd_find
+        lda cbuf
+        cmp #'.'
+        bne cd_find
+        lda cbuf+1
+        cmp #'.'
+        beq cd_go
+cd_find jsr cd_look             ; echte Schreibweise suchen
+cd_go   jsr cd_cmd
+        bcs cd_err
+        jmp cd_part
+cd_done lda #0                  ; geschafft: Name leeren, Liste zeigen
+        sta flen
+        jmp showdir
+cd_err  jsr ushow
+        sec
+        rts
+
+; CHANGE_DIR mit dem Namen in cbuf (Laenge cblen)
+; Carry gesetzt: Fehler (Meldung in USTAT)
+cd_cmd  lda #$11
+        jsr ucmd
+        ldx #0
+-       cpx cblen
+        beq +
+        lda cbuf,x
+        jsr uaddb
+        inx
+        bne -
++       jsr ucirun
+        bcs +
+        jsr uciok
++       rts
+
+; Ordner cbuf im aktuellen Verzeichnis suchen (Gross/Klein egal).
+; Gefunden: cbuf/cblen enthalten danach die echte Schreibweise.
+cd_look lda #0
+        sta cdfnd
+        lda #$13                ; OPEN_DIR
+        jsr ucmd
+        jsr ucirun
+        bcs cl_rt
+        jsr uciok
+        bcs cl_rt
+        lda #$14                ; READ_DIR, jeden Eintrag vergleichen
+        jsr ucmd
+        lda #<cb_find
+        sta ucbv
+        lda #>cb_find
+        sta ucbv+1
+        jsr ucirun
+        lda cdfnd
+        beq cl_rt
+        ldx #0                  ; gefundene Schreibweise uebernehmen
+-       lda rbuf,x
+        sta cbuf,x
+        inx
+        cpx cdfnd
+        bne -
+        stx cblen
+cl_rt   rts
+
+; Ein Verzeichniseintrag: Ordner mit gleichem Namen (Gross/Klein egal)?
+cb_find lda cdfnd               ; schon gefunden: Rest ueberlesen
+        bne cf_ok
+        lda URBUF               ; nur Ordner
+        and #$10
+        beq cf_ok
+        lda url+1               ; sehr langer Eintrag: kein Ordnername
+        bne cf_ok
+        ldx #0
+-       cpx cblen
+        beq cf_end
+        txa                     ; Name beginnt bei URBUF+1
+        clc
+        adc #1
+        cmp url
+        bcs cf_ok               ; Eintrag kuerzer
+        lda URBUF+1,x
+        jsr upcase
+        sta ubt
+        lda cbuf,x
+        jsr upcase
+        cmp ubt
+        bne cf_ok
+        inx
+        bne -
+cf_end  inx                     ; Eintrag muss hier zu Ende sein
+        cpx url
+        bcs +
+        lda URBUF,x
+        bne cf_ok
++       ldx #0                  ; echte Schreibweise merken
+-       lda URBUF+1,x
+        sta rbuf,x
+        inx
+        cpx cblen
+        bne -
+        stx cdfnd
+cf_ok   clc
+        rts
+
+; a-z in A-Z umwandeln (ASCII)
+upcase  cmp #'a'
+        bcc +
+        cmp #'z'+1
+        bcs +
+        and #$df
++       rts
+
+; Verzeichnis ueber UCI anzeigen: Pfad (invers), dann die Eintraege,
+; Ordner mit / am Ende.  Carry gesetzt: Fehler (Meldung steht)
+ucidir  lda #$12                ; GET_PATH
+        jsr ucmd
+        lda #<cb_path
+        sta ucbv
+        lda #>cb_path
+        sta ucbv+1
+        lda #0
+        sta llen
+        jsr ucirun
+        bcs ud_err
+        lda #DIRCOL             ; Laufwerksinhalt: eigene Rahmenfarbe
+        sta $d020
+        lda #0
+        sta drow2
+        jsr sd_clr              ; Kopfzeile: Pfad invers
+        ldx #0
+        ldy #0
+-       cpx llen
+        beq +
+        lda lbuf,x
+        stx dx
+        jsr a2s
+        ldx dx
+        ora #$80
+        sta (sc),y
+        iny
+        inx
+        cpy #40
+        bcc -
++       inc drow2
+        lda #$13                ; OPEN_DIR
+        jsr ucmd
+        jsr ucirun
+        bcs ud_err
+        lda USTAT               ; "01,DIRECTORY EMPTY": nichts lesen
+        cmp #'0'
+        bne ud_err
+        lda USTAT+1
+        cmp #'1'
+        beq ud_end
+        jsr uciok
+        bcs ud_err
+        lda #$14                ; READ_DIR
+        jsr ucmd
+        lda #<cb_dir
+        sta ucbv
+        lda #>cb_dir
+        sta ucbv+1
+        jsr ucirun
+        bcs ud_err
+ud_end  lda drow2               ; restliche Zeilen leeren
+        cmp #TROWS
+        bcs +
+        jsr sd_clr
+        inc drow2
+        bne ud_end
++       clc
+        rts
+ud_err  jsr ushow
+        sec
+        rts
+
+; Pfad aus der Antwort nach lbuf/llen (hoechstens 40 Zeichen)
+cb_path ldx #0
+-       cpx url
+        beq +
+        cpx #40
+        bcs +
+        lda URBUF,x
+        beq +
+        sta lbuf,x
+        inx
+        bne -
++       stx llen
+        clc
+        rts
+
+; Ein Verzeichniseintrag: URBUF = Attribut, Name
+; Carry gesetzt: STOP gedrueckt
+cb_dir  lda drow2
+        cmp #TROWS
+        bcc +
+        jsr stclear             ; Seite voll
+        #msg m_more
+        jsr getkey
+        cmp #$03
+        bne cd_pg
+        sec
+        rts
+cd_pg   lda #0
+        sta drow2
++       jsr sd_clr
+        ldx #1
+        ldy #0
+-       cpx url                 ; Name bis zur 0 oder zum Ende
+        beq cd_dir
+        lda URBUF,x
+        beq cd_dir
+        cpy #39
+        bcs cd_dir
+        stx dx
+        jsr a2s
+        ldx dx
+        sta (sc),y
+        iny
+        inx
+        bne -
+cd_dir  lda URBUF               ; Ordner: / anhaengen
+        and #$10
+        beq +
+        lda #'/'
+        sta (sc),y
++       inc drow2
+        clc
+        rts
+
+; ---------------------------------------------------------------------
+;  UCI: Laden
+; ---------------------------------------------------------------------
+uload   jsr haswild             ; Platzhalter: passende Datei suchen
+        bcc ul_open
+        jsr uglob
+        bcc ul_open             ; gefunden: fname hat den echten Namen
+        jmp ushow_nf
+ul_open jsr extchk              ; gesperrte Dateiendung?
+        bcc +
+        jmp ushow_ft
++       lda #$02                ; OPEN_FILE zum Lesen
+        jsr ucmd
+        lda #$01
+        jsr uaddb
+        jsr uaddname
+        jsr ucirun
+        bcc +
+        jmp ul_err
++
+        jsr uciok
+        bcc +
+        jmp ul_err
++
+        lda #$07                ; FILE_INFO: Dateigroesse
+        jsr ucmd
+        lda #<cb_info
+        sta ucbv
+        lda #>cb_info
+        sta ucbv+1
+        jsr ucirun
+        bcc +
+        jmp ul_cerr
++
+        jsr uciok
+        bcc +
+        jmp ul_cerr
++       jsr upick               ; zu gross: Teil waehlen
+        bcc ul_go
+        cmp #0
+        bne +
+        jmp ul_cerr             ; Fehler beim Springen
++       sec                     ; abgebrochen (Datei ist zu)
+        rts
+ul_go   jsr newtext
+        jsr trmark              ; bis zum Ende: Text unvollstaendig
+        lda #0
+        sta toobig
+ul_lp   lda lstop               ; Ende des Teils erreicht?
+        beq +
+        jmp ul_done
++
+        lda usize               ; noch etwas zu lesen?
+        ora usize+1
+        ora usize+2
+        ora usize+3
+        beq ul_done
+        lda #<$4000             ; Stueck: hoechstens 16 KByte
+        sta uchk
+        lda #>$4000
+        sta uchk+1
+        lda usize+2
+        ora usize+3
+        bne +
+        lda usize+1
+        cmp #>$4000
+        bcs +
+        lda usize               ; Rest ist kleiner
+        sta uchk
+        lda usize+1
+        sta uchk+1
++       lda #$04                ; READ_DATA
+        jsr ucmd
+        lda uchk
+        jsr uaddb
+        lda uchk+1
+        jsr uaddb
+        lda #<cb_load
+        sta ucbv
+        lda #>cb_load
+        sta ucbv+1
+        jsr ucirun
+        bcs ul_cerr
+        lda toobig
+        bne ul_done             ; Speicher voll
+        jsr uciok
+        bcs ul_cerr
+        sec                     ; Rest = Rest - Stueck
+        lda usize
+        sbc uchk
+        sta usize
+        lda usize+1
+        sbc uchk+1
+        sta usize+1
+        lda usize+2
+        sbc #0
+        sta usize+2
+        lda usize+3
+        sbc #0
+        sta usize+3
+        jmp ul_lp
+ul_done
+ud_cl   lda #$03                ; CLOSE_FILE
+        jsr ucmd
+        jsr ucirun
+        jmp ld_tail
+ul_cerr jsr ushow               ; Fehler zeigen, Datei schliessen
+        lda #$03
+        jsr ucmd
+        jsr ucirun
+        lda #1
+        sta statshow
+        sec
+        rts
+ul_err  jsr ushow
+        sec
+        rts
+
+; ---------------------------------------------------------------------
+;  Laufwerk U: zu grosse Datei in Teilen laden
+;  Teil k beginnt bei (k-1)*PSTEP und ist hoechstens PLEN lang.
+;  Teile ab 2 beginnen nach dem ersten LF, Teile vor dem letzten
+;  enden nach dem letzten LF.  Die Teile ueberlappen sich.
+; ---------------------------------------------------------------------
+; usize = Dateigroesse.  Passt sie nicht: Teil abfragen, springen,
+; danach usize = zu lesende Bytes.
+; Carry gesetzt: A = 0 Fehler (Meldung in USTAT, Datei noch offen),
+;                A = 1 abgebrochen (Datei geschlossen)
+upick   lda #0
+        sta lskip
+        sta ptrim
+        sta lstop
+        sta uraw
+        sta uraw+1
+        lda usize+3             ; passt in den Textspeicher?
+        ora usize+2
+        bne up_big
+        lda usize+1
+        cmp #>(BUFEND-BUF)
+        bcc up_fit
+        bne up_big
+        lda usize
+        cmp #<(BUFEND-BUF)+1
+        bcs up_big
+up_fit  clc
+        rts
+up_big  lda #1                  ; Anzahl der Teile bestimmen
+        sta unum
+        lda #0
+        sta unum+1
+        jsr up_p0
+-       jsr up_cmp              ; Teil reicht bis zum Ende?
+        bcs up_ask
+        jsr up_next
+        inc unum
+        bne -
+        inc unum+1
+        bne -
+up_ask  jsr stclear             ; "File too big! Part (1-n): "
+        #msg m_pask
+        lda unum
+        ldx unum+1
+        jsr prnum
+        #msg m_pask2
+        jsr getnum
+        bcc up_chk
+        cmp #$03
+        bne up_ask              ; keine Zahl: nochmal
+        lda #$03                ; STOP: Datei schliessen
+        jsr ucmd
+        jsr ucirun
+        lda #1
+        sta nokey
+        sec
+        rts
+up_chk  lda uval                ; 1 bis n?
+        ora uval+1
+        beq up_ask
+        lda unum+1
+        cmp uval+1
+        bcc up_ask
+        bne +
+        lda unum
+        cmp uval
+        bcc up_ask
++       lda uval
+        sta ukk
+        lda uval+1
+        sta ukk+1
+        jsr stclear
+        #msg m_lding
+        jsr up_p0               ; Anfang von Teil k suchen
+-       lda uval
+        bne +
+        dec uval+1
++       dec uval
+        lda uval
+        ora uval+1
+        beq +
+        jsr up_next
+        jmp -
++       ldx #0                  ; Rest = Groesse - Anfang
+        ldy #4
+        sec
+-       lda usize,x
+        sbc upos,x
+        sta usize,x
+        inx
+        dey
+        bne -
+        lda usize+3             ; Rest > PLEN: nicht der letzte Teil
+        ora usize+2
+        bne +
+        lda usize+1
+        cmp #>PLEN
+        bcc up_len
+        bne +
+        lda usize
+        beq up_len
++       lda #<PLEN
+        sta usize
+        lda #>PLEN
+        sta usize+1
+        lda #0
+        sta usize+2
+        sta usize+3
+        lda #1
+        sta ptrim
+        lda #<PSTEP             ; Teil endet am ersten LF nach
+        sta uend                ; PSTEP (Teil 1) bzw.
+        lda #>PSTEP             ; PSTEP+POVL Bytes (ab Teil 2)
+        sta uend+1
+        lda upos
+        ora upos+1
+        ora upos+2
+        ora upos+3
+        beq up_len
+        lda #<(PSTEP+POVL)
+        sta uend
+        lda #>(PSTEP+POVL)
+        sta uend+1
+up_len  lda #1
+        sta upart
+        lda upos                ; Teil 1: kein Sprung
+        ora upos+1
+        ora upos+2
+        ora upos+3
+        bne +
+        clc
+        rts
++       lda #1
+        sta lskip
+        lda #$06                ; FILE_SEEK
+        jsr ucmd
+        ldx #0
+-       lda upos,x
+        jsr uaddb
+        inx
+        cpx #4
+        bne -
+        jsr ucirun
+        bcc +
+        jmp up_err
++       jsr uciok
+        bcs up_skp              ; Sprung geht nicht: ueberlesen
+        clc
+        rts
+up_skp  ldx #3                  ; Anfang lesen und verwerfen
+-       lda upos,x
+        sta uskip,x
+        dex
+        bpl -
+us_lp   lda uskip
+        ora uskip+1
+        ora uskip+2
+        ora uskip+3
+        bne +
+        clc
+        rts
++       lda #<$4000             ; Stueck: hoechstens 16 KByte
+        sta uchk
+        lda #>$4000
+        sta uchk+1
+        lda uskip+2
+        ora uskip+3
+        bne +
+        lda uskip+1
+        cmp #>$4000
+        bcs +
+        lda uskip
+        sta uchk
+        lda uskip+1
+        sta uchk+1
++       lda #$04                ; READ_DATA, Daten verwerfen
+        jsr ucmd
+        lda uchk
+        jsr uaddb
+        lda uchk+1
+        jsr uaddb
+        jsr ucirun
+        bcs up_err
+        jsr uciok
+        bcs up_err
+        sec
+        lda uskip
+        sbc uchk
+        sta uskip
+        lda uskip+1
+        sbc uchk+1
+        sta uskip+1
+        lda uskip+2
+        sbc #0
+        sta uskip+2
+        lda uskip+3
+        sbc #0
+        sta uskip+3
+        jmp us_lp
+up_err  lda #0
+        sec
+        rts
+
+; Teil 1: Basis und Anfang = 0
+up_p0   lda #0
+        ldx #3
+-       sta upos,x
+        sta ubase,x
+        dex
+        bpl -
+        rts
+; naechster Teil: Basis + PSTEP, Anfang = Basis - POVL
+up_next clc
+        lda ubase
+        adc #<PSTEP
+        sta ubase
+        lda ubase+1
+        adc #>PSTEP
+        sta ubase+1
+        bcc +
+        inc ubase+2
+        bne +
+        inc ubase+3
++       sec
+        lda ubase
+        sbc #<POVL
+        sta upos
+        lda ubase+1
+        sbc #>POVL
+        sta upos+1
+        lda ubase+2
+        sbc #0
+        sta upos+2
+        lda ubase+3
+        sbc #0
+        sta upos+3
+        rts
+; Carry gesetzt: upos + PLEN >= usize (Teil reicht bis zum Ende)
+up_cmp  clc
+        lda upos
+        adc #<PLEN
+        sta utmp4
+        lda upos+1
+        adc #>PLEN
+        sta utmp4+1
+        lda upos+2
+        adc #0
+        sta utmp4+2
+        lda upos+3
+        adc #0
+        sta utmp4+3
+        ldx #0
+        ldy #4
+        sec
+-       lda utmp4,x
+        sbc usize,x
+        inx
+        dey
+        bne -
+        rts
+
+; Zahl (A = low, X = high) ohne fuehrende Leerzeichen ausgeben
+prnum   sta sz
+        stx sz+1
+        jsr todec
+        ldy #0
+-       lda numbuf,y
+        cmp #$20
+        bne +
+        iny
+        bne -
++
+-       lda numbuf,y
+        jsr stputc
+        iny
+        cpy #5
+        bne -
+        rts
+
+; Schreibschutz fuer gekuerzte Texte: Name und Laufwerk merken
+trmark  ldx #0
+-       cpx flen
+        beq +
+        lda fname,x
+        sta tname,x
+        inx
+        bne -
++       stx tlen
+        lda device
+        sta tdev
+        lda #1
+        sta trunc
+        rts
+
+; Soll ein gekuerzter Text unter seinem alten Namen gespeichert
+; werden?  (Gross/Klein egal, alter Name darf * oder ? haben)
+; Carry gesetzt: ja, nicht speichern
+trchk   lda trunc
+        beq tc_no
+        lda device
+        cmp tdev
+        bne tc_no
+        ldx #0                  ; neuer Name nach URBUF+1 (zum Vergleich)
+-       cpx flen
+        beq +
+        lda fname,x
+        sta URBUF+1,x
+        inx
+        bne -
++       stx glen
+        ldx #0                  ; alter Name als Muster nach fname
+-       cpx tlen
+        beq +
+        lda tname,x
+        sta fname,x
+        inx
+        bne -
++       stx flen
+        jsr gmatch
+        php
+        ldx #0                  ; neuen Namen zurueckholen
+-       cpx glen
+        beq +
+        lda URBUF+1,x
+        sta fname,x
+        inx
+        bne -
++       stx flen
+        plp
+        rts
+tc_no   clc
+        rts
+
+; Steht * oder ? im Dateinamen?  Carry gesetzt: ja
+haswild ldx #0
+-       cpx flen
+        beq +
+        lda fname,x
+        cmp #'*'
+        beq hw_y
+        cmp #'?'
+        beq hw_y
+        inx
+        bne -
++       clc
+        rts
+hw_y    sec
+        rts
+
+; Erste Datei im aktuellen Ordner suchen, die zum Muster in fname
+; passt (Gross/Klein egal).  Gefunden: fname/flen = echter Name.
+; Carry gesetzt: nichts gefunden
+uglob   lda #0
+        sta gfound
+        lda #$13                ; OPEN_DIR
+        jsr ucmd
+        jsr ucirun
+        bcs ug_no
+        lda USTAT               ; "01,..." = leer, sonst muss es 00 sein
+        cmp #'0'
+        bne ug_no
+        lda USTAT+1
+        cmp #'0'
+        bne ug_no
+        lda #$14                ; READ_DIR, jeden Eintrag pruefen
+        jsr ucmd
+        lda #<cb_glob
+        sta ucbv
+        lda #>cb_glob
+        sta ucbv+1
+        jsr ucirun
+        lda gfound
+        beq ug_no
+        ldx #0                  ; echten Namen uebernehmen
+-       lda rbuf,x
+        sta fname,x
+        inx
+        cpx gfound
+        bne -
+        stx flen
+        clc
+        rts
+ug_no   sec
+        rts
+
+; Meldung "Datei nicht gefunden" zeigen.  Carry gesetzt
+ushow_nf
+        ldx #0
+-       lda m_nofile,x
+        sta USTAT,x
+        beq +
+        inx
+        bne -
++       stx ustl
+        jsr ushow
+        sec
+        rts
+
+; Meldung "falscher Dateityp" zeigen.  Carry gesetzt
+ushow_ft
+        ldx #0
+        lda device
+        bne uf_iec
+-       lda m_ftype,x           ; Laufwerk U
+        sta USTAT,x
+        beq +
+        inx
+        bne -
+uf_iec  lda m_ftyp8,x           ; Laufwerke 8-11
+        sta USTAT,x
+        beq +
+        inx
+        bne uf_iec
++       stx ustl
+        jsr ushow
+        sec
+        rts
+
+; Hat fname eine gesperrte Endung (Liste xblock)?  Carry gesetzt: ja
+extchk  ldx flen                ; letzten Punkt suchen
+-       dex
+        bmi ec_no               ; kein Punkt: erlaubt
+        lda fname,x
+        cmp #'.'
+        bne -
+        inx
+        stx gpi                 ; Anfang der Endung
+        ldy #0
+ec_ent  ldx gpi                 ; einen Eintrag der Liste vergleichen
+ec_cmp  lda xblock,y
+        beq ec_end
+        cmp #' '
+        beq ec_end
+        cpx flen
+        bcs ec_skip             ; Endung kuerzer
+        sta ubt
+        lda fname,x
+        jsr upcase
+        cmp ubt
+        bne ec_skip
+        inx
+        iny
+        bne ec_cmp
+ec_end  cpx flen                ; Eintrag zu Ende: Endung auch?
+        beq ec_yes
+ec_skip lda xblock,y            ; Rest des Eintrags ueberspringen
+        beq ec_no
+        iny
+        cmp #' '
+        bne ec_skip
+        beq ec_ent
+ec_yes  sec
+        rts
+ec_no   clc
+        rts
+
+; Ein Verzeichniseintrag: Datei (kein Ordner), die zum Muster passt?
+cb_glob lda gfound              ; schon gefunden: Rest ueberlesen
+        bne cg_ok
+        lda URBUF               ; Ordner ueberspringen
+        and #$10
+        bne cg_ok
+        lda url+1
+        bne cg_ok
+        ldx #0                  ; Laenge des Namens (bis 0 oder Ende)
+-       txa
+        clc
+        adc #1
+        cmp url
+        bcs +
+        lda URBUF+1,x
+        beq +
+        inx
+        bne -
++       stx glen
+        cpx #UNAMEL+1           ; zu lang fuer die Abfrage
+        bcs cg_ok
+        jsr gmatch
+        bcc cg_ok
+        ldx #0                  ; passt: Namen merken
+-       cpx glen
+        beq +
+        lda URBUF+1,x
+        sta rbuf,x
+        inx
+        bne -
++       stx gfound
+cg_ok   clc
+        rts
+
+; Muster fname (flen) mit dem Namen URBUF+1 (glen) vergleichen,
+; * = beliebig viele Zeichen, ? = genau ein Zeichen, Gross/Klein egal
+; Carry gesetzt: passt
+gmatch  lda #0
+        sta gpi
+        sta gsi
+        sta gmark
+        lda #$ff
+        sta gstar
+gm_lp   lda gsi                 ; Name zu Ende?
+        cmp glen
+        bcs gm_tail
+        ldx gpi
+        cpx flen
+        bcs gm_back             ; Muster zu Ende, Name nicht
+        lda fname,x
+        cmp #'*'
+        beq gm_star
+        cmp #'?'
+        beq gm_adv
+        jsr upcase
+        sta ubt
+        ldy gsi
+        lda URBUF+1,y
+        jsr upcase
+        cmp ubt
+        bne gm_back
+gm_adv  inc gpi                 ; Zeichen passt
+        inc gsi
+        jmp gm_lp
+gm_star stx gstar               ; * merken, zunaechst leer
+        inc gpi
+        lda gsi
+        sta gmark
+        jmp gm_lp
+gm_back lda gstar               ; kein * davor: passt nicht
+        cmp #$ff
+        beq gm_no
+        clc                     ; * ein Zeichen mehr schlucken lassen
+        adc #1
+        sta gpi
+        inc gmark
+        lda gmark
+        sta gsi
+        jmp gm_lp
+gm_tail ldx gpi                 ; Rest des Musters darf nur * sein
+-       cpx flen
+        beq gm_yes
+        lda fname,x
+        cmp #'*'
+        bne gm_no
+        inx
+        bne -
+gm_yes  sec
+        rts
+gm_no   clc
+        rts
+
+; Dateigroesse (4 Bytes) aus der Antwort von FILE_INFO
+cb_info ldx #3
+-       lda URBUF,x
+        sta usize,x
+        dex
+        bpl -
+        clc
+        rts
+
+; Gelesene Bytes in den Text uebernehmen (NUL und CR ueberspringen)
+; Carry gesetzt: Speicher voll
+cb_load lda #<URBUF
+        sta ur
+        lda #>URBUF
+        sta ur+1
+        lda url
+        sta ucnt2
+        lda url+1
+        sta ucnt2+1
+cl_lp   lda ucnt2
+        ora ucnt2+1
+        bne +
+        clc                     ; Block fertig
+        rts
++       ldy #0
+        lda (ur),y
+        sta cbyte
+        lda ptrim               ; Teil: gelesene Bytes zaehlen
+        beq +
+        #inc16 uraw
+        lda lstop               ; Ende erreicht: Rest verwerfen
+        bne cl_nx
++       lda cbyte
+        ldx lskip               ; Teil: Anfang bis zum ersten LF weglassen
+        beq +
+        cmp #LF
+        bne cl_nx
+        dec lskip
+        jmp cl_nx
++       cmp #0
+        beq cl_nx
+        cmp #$0d
+        beq cl_nx
+        ldx gs                  ; Gap voll?
+        cpx cur
+        bne +
+        ldx gs+1
+        cpx cur+1
+        bne +
+        lda #1
+        sta toobig
+        sec
+        rts
++       sta (gs),y
+        #inc16 gs
+        lda ptrim               ; Teil: erstes LF nach uend = Ende
+        beq cl_nx
+        lda cbyte
+        cmp #LF
+        bne cl_nx
+        lda uend+1              ; erst wenn uraw > uend
+        cmp uraw+1
+        bcc +
+        bne cl_nx
+        lda uend
+        cmp uraw
+        bcs cl_nx
++       lda #1
+        sta lstop
+cl_nx   inc ur
+        bne +
+        inc ur+1
++       lda ucnt2
+        bne +
+        dec ucnt2+1
++       dec ucnt2
+        jmp cl_lp
+cl_ok   clc
+        rts
+
+; ---------------------------------------------------------------------
+;  UCI: Speichern (sicher ueber TE64.TMP)
+;  TE64.TMP neu anlegen und schreiben, schliessen, dann die alte
+;  Datei loeschen und TE64.TMP umbenennen.  Bei einem Fehler wird
+;  TE64.TMP geloescht, die alte Datei bleibt erhalten.
+; ---------------------------------------------------------------------
+usave   lda #$02                ; gibt es die Datei schon?  Zum Lesen
+        jsr ucmd                ; oeffnen (FILE_STAT ist unzuverlaessig)
+        lda #$01
+        jsr uaddb
+        jsr uaddname
+        jsr ucirun
+        bcc +
+        jmp us_err
++       lda #0
+        sta uexist
+        jsr uciok
+        bcs us_new              ; nicht da: neue Datei
+        inc uexist
+        lda #$03                ; gleich wieder schliessen
+        jsr ucmd
+        jsr ucirun
+        bcc +
+        jmp us_err
++       jsr askrepl             ; Datei gibt es: ersetzen?
+        bcs us_new
+        sec                     ; nein
+        rts
+us_new  lda #$09                ; alte TE64.TMP loeschen
+        jsr ucmd
+        jsr uaddtmp
+        jsr ucirun
+        bcc +
+        jmp us_err
++
+        lda #$02                ; TE64.TMP neu anlegen
+        jsr ucmd
+        lda #$06
+        jsr uaddb
+        jsr uaddtmp
+        jsr ucirun
+        bcc +
+        jmp us_err
++
+        jsr uciok
+        bcc +
+        jmp us_err
++
+        jsr tstart              ; Text in Stuecken zu 500 Bytes
+        lda #0
+        sta ucrp
+uw_new  lda #$05                ; WRITE_DATA, zwei Fuellbytes
+        jsr ucmd
+        lda #0
+        jsr uaddb
+        jsr uaddb
+uw_fill lda ucrp                ; nach CR folgt noch LF
+        beq +
+        lda #0
+        sta ucrp
+        lda #LF
+        bne uw_put
++       ldx #0
+        lda (p,x)
+        beq uw_end              ; Textende
+        #nxt p
+        .if CRLF
+        cmp #LF
+        bne uw_put
+        lda #1
+        sta ucrp
+        lda #$0d
+        .endif
+uw_put  jsr uaddb
+        lda ucl+1               ; 4 + 500 Bytes erreicht?
+        beq uw_fill
+        lda ucl
+        cmp #<504
+        bcc uw_fill
+        jsr uwsend
+        bcs uw_err
+        jmp uw_new
+uw_end  lda ucl+1               ; Rest senden
+        bne +
+        lda ucl
+        cmp #5
+        bcc uw_cls
++       jsr uwsend
+        bcs uw_err
+uw_cls  lda #$03                ; CLOSE_FILE
+        jsr ucmd
+        jsr ucirun
+        bcs us_err
+        jsr uciok
+        bcs uw_derr
+        lda uexist              ; alte Datei loeschen
+        beq +
+        lda #$09
+        jsr ucmd
+        jsr uaddname
+        jsr ucirun
+        bcs us_err
+        jsr uciok
+        bcs us_err
++       lda #$0a                ; RENAME TE64.TMP -> Name
+        jsr ucmd
+        jsr uaddtmp
+        lda #0
+        jsr uaddb
+        jsr uaddname
+        jsr ucirun
+        bcs us_err
+        jsr uciok
+        bcc +
+        jmp uw_derr             ; Fehler: TE64.TMP wegraeumen
++       lda #0                  ; Erfolg: 00,OK zeigen
+        sta ustl
+        jsr ushow
+        clc
+        rts
+us_err  jsr ushow
+        sec
+        rts
+uw_err  jsr ushow               ; Schreibfehler zeigen,
+        lda #$03                ; Datei schliessen,
+        jsr ucmd
+        jsr ucirun
+        jmp uw_del
+uw_derr jsr ushow
+uw_del  lda #$09                ; TE64.TMP loeschen
+        jsr ucmd
+        jsr uaddtmp
+        jsr ucirun
+        sec                     ; alte Datei bleibt erhalten
+        rts
+
+; Schreibpaket senden.  Carry gesetzt: Fehler (Meldung in USTAT)
+uwsend  jsr ucirun
+        bcs +
+        jmp uciok
++       rts
 
 ; ---------------------------------------------------------------------
 ;  Texte (ASCII, enden mit 0) und Variablen
@@ -2444,20 +4455,39 @@ ld_err  jsr closeall
 m_help  .null "F1 Save  F3 Load  F5 New  F8 ASCII Code"
 m_pg    .null "F4 PgUp  F6 PgDn  F7 Exit  "
 m_free  .null " Free:"
-m_sname .null " Save file: "
-m_lname .null " Load file: "
+m_sname .null " SAVE: "
+m_lname .null " LOAD: "
 m_new   .null " Clear text? (Y/N)"
 m_quit  .null " Exit editor? (Y/N)"
 m_code  .null " Text code (e.g. 33-126): "
 m_full  .null " Memory full!"
 m_loaded .null " READY."
 m_big   .null " File too big - truncated!"
+m_pask  .null " File too big! Part (1-"
+m_pask2 .null "): "
+m_part  .null " Part "
+m_pof   .null " of "
+m_pld   .null " loaded."
+m_trunc .null " Text truncated - use a new name!"
 m_dev   .null " Drive not ready!"
 m_dfull .null " Disk full! Nothing saved."
 m_more  .null " More: any key   STOP: end"
 m_drv   .null "Drive "
 m_dollar .null "$"
 m_tmp   .null "TE64.TMP"
+m_uci   .null "U"
+m_uhome .null "/"                  ; Startordner fuer UCI
+m_uto   .null "UCI: no response"
+m_unact .null "UCI inactive (please check $DF00-$DFFF)"
+m_repl  .null " File exists. Replace? (Y/N)"
+m_nofile .null "FILE NOT FOUND"
+m_ftype .null "UCI, FILE TYPE MISMATCH"
+m_ftyp8 .null "FILE TYPE NOT ALLOWED"
+xblock  #BLOCKED                ; gesperrte Endungen (Option oben)
+        .byte 0
+m_lding .null " LOADING..."
+m_sving .null " SAVING..."
+m_uok   .null "00,OK"
 
 device  .byte 8
 statshow .byte 0
@@ -2489,7 +4519,7 @@ flen    .byte 0
 freel   .byte 0
 freeh   .byte 0
 numbuf  .fill 5, 0
-fname   .fill 20, 0
+fname   .fill 26, 0
 fbuf    .fill 32, 0
 fsave   .fill 16, 0
 flsave  .byte 0
@@ -2506,5 +4536,56 @@ dneed   .word 0
 dfound  .byte 0
 dok     .byte 0
 blen    .fill 3, 0
+gnmax   .byte 16
+ucion   .byte 0
+ucl     .word 0
+ubt     .byte 0
+ucbv    .word 0
+ustl    .byte 0
+url     .word 0
+uabort  .byte 0
+uto     .fill 3, 0
+usize   .fill 4, 0
+uchk    .word 0
+ucnt2   .word 0
+uexist  .byte 0
+ucrp    .byte 0
+uwhere  .byte 0
+ust     .byte 0
+nokey   .byte 0
+gnold   .byte 0
+bcx     .byte 0
+bcy     .byte 0
+gload   .byte 0
+gfound  .byte 0
+glen    .byte 0
+trunc   .byte 0                 ; 1 = Text nur teilweise geladen
+upart   .byte 0                 ; 1 = ein Teil der Datei geladen
+ptrim   .byte 0                 ; 1 = Teil vor dem letzten: Ende kuerzen
+lskip   .byte 0                 ; 1 = bis zum ersten LF weglassen
+unum    .word 0                 ; Anzahl der Teile
+ukk     .word 0                 ; gewaehlter Teil
+upos    .fill 4, 0              ; Anfang des Teils in der Datei
+uskip   .fill 4, 0
+utmp4   .fill 4, 0
+ubase   .fill 4, 0              ; Teilgrenze in der Datei
+uraw    .word 0                 ; gelesene Bytes des Teils
+uend    .word 0                 ; danach am naechsten LF aufhoeren
+lstop   .byte 0                 ; 1 = Ende des Teils erreicht
+cbyte   .byte 0
+tdev    .byte 0                 ; dessen Laufwerk
+tlen    .byte 0
+tname   .fill 26, 0             ; und Name
+gpi     .byte 0
+gsi     .byte 0
+gstar   .byte 0
+gmark   .byte 0
+cdlen   .byte 0
+cdpos   .byte 0
+cblen   .byte 0
+cdfnd   .byte 0
+cbuf    .fill 26, 0
+rbuf    .fill 26, 0
+ustreg  .byte 0
 msgbuf  .fill 40, 0
 progend
