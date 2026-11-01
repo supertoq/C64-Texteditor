@@ -86,7 +86,9 @@ Start the program from floppy disk using `LOAD"TEXTEDITOR",8,1` and `RUN`.
 ### File Loading And Saving  
 <img src="assets/screenshot-05.png" alt="loading file" width="450">
 To load (F3) or save (F1), you can select the drive while the command line is active by pressing CRSR up/down. Drive “U” is shown on Ultimate devices and provides access to USB, SD cards, and more.  
+Entering $ allows you to list the contents of the drive.
   
+   
 <br>
 <br>  
      
