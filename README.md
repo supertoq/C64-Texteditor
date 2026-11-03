@@ -93,7 +93,7 @@ Entering $ allows you to list the contents of the drive.
 To exit the editor, press F8 then confirm by pressing Y.  
   
 ### Quick Note
-The line ending (LF/CRLF), translated characters, colours, and text outputs, the file extensions in the blocklist, can all be easily changed in the source code. You’ll find them as options near the top, below the descriptions.  
+The line ending (LF/CRLF), the file extensions in the blocklist, translated characters, colours, and text outputs, can all be easily changed in the source code. You’ll find them as options near the top, below the descriptions.  
   
     
 <br>  
