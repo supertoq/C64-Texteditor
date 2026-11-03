@@ -24,7 +24,7 @@ Special characters are mapped to suitable C64 screen codes for display.
 - Characters that cannot be entered directly via the keyboard can be entered manually using F8.  
 - German UTF-8 umlauts are displayed as inverted ASCII characters; no conversion is performed in the file.  
 - Drives 8–11 can be selected for loading and saving; disks are checked for space before saving. 
-- File access via the UCI interface (Ultimate 64, C64 Ultimate), presented as drive U.
+- File access via the UCI interface (Ultimate 64, C64 Ultimate) presented as drive U.
 - UCI: Files that are too large to fit in memory are split into parts; so you can still read them (e.g. book).
    
 ### ANSI X3.4-1986 Characters  
@@ -90,7 +90,10 @@ To load (F3) or save (F1), you can select the drive while the command line is ac
 Entering $ allows you to list the contents of the drive.  
   
 ### Exiting
-To exit the editor, press F8 then confirm by pressing Y.   
+To exit the editor, press F8 then confirm by pressing Y.  
+  
+### Quick Note
+The line ending (LF/CRLF), translated characters, colours, and text outputs can all be easily changed in the source code. You’ll find them as options near the top, below the descriptions.  
   
     
 <br>  
