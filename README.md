@@ -92,7 +92,6 @@ Start the program from floppy disk using `LOAD"TEXTEDITOR",8,1` and `RUN`.
 When loading (F3) or saving (F1), a file browser is displayed. You can select floppy drives 8–11. On Ultimate devices, drive U is also available, providing direct access to USB sticks and SD cards through UCI file access.
 
 Use the CRSR Up/Down keys to navigate. Press RETURN to open a directory, or select .. to go back. In LOAD mode, press RETURN on a file to load it. In SAVE mode, press RETURN to copy the filename to the input line, then press RETURN again to save. A confirmation prompt helps prevent accidental overwrites.
-
 The wildcards * and ? can be used when selecting files, but not when saving. Enter $ to re-read the drive contents. Filenames can be up to 25 characters long for UCI and 16 characters for disks. UCI access is case-sensitive.  
   
 ### Exiting
