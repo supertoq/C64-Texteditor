@@ -17,7 +17,7 @@ Special characters are mapped to suitable C64 screen codes for display.
 - Files are saved as C64 SEQ files containing plain ASCII text.  
   (On Windows, the file extension must be changed to `.txt`.)
 - Optional line endings: LF or CRLF.
-- Text buffer at `$4000–$CEFF` (approximately 36 KB); BASIC ROM is switched off.
+- Text buffer at `$36B7-$CEFF` (38,985 bytes); BASIC ROM is switched off.
 - The uppercase/lowercase character set is copied to RAM at `$3000`.
 - Application memory usage: approx. 12 KB.
 - All keyboard input is converted to ASCII.  
