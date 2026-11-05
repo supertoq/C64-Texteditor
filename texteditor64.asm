@@ -1,7 +1,7 @@
 ; ========================================================================================
 ;  ASCII text editor for the C64
 ;  Copyright (c) 2026 supertoq
-;  Version 2 _W
+;  Version 2
 ;  https://github.com/supertoq/Texteditor64
 ;
 ;  A text editor that can load, edit and save ASCII code.
@@ -12,8 +12,8 @@
 ;  - Files are saved as C64 SEQ files containing plain ASCII
 ;    (on Windows the file extension .seq has to be renamed to .txt)
 ;  - Line ending LF or CRLF selectable in the source code
-;  - Text memory $3696-$CEFF (approx. 38 KByte), BASIC ROM is switched off
-;  - Program memory usage 12.8 KByte
+;  - Text memory $36B7-$CEFF (approx. 38 KByte), BASIC ROM is switched off
+;  - Program memory usage 12.9 KByte
 ;  - Upper/lower case character set is copied to RAM at $D000
 ;  - Every input is converted to ASCII
 ;  - Characters not available on the keyboard can be entered manually with F8
@@ -1688,6 +1688,20 @@ k_quit  jsr stclear
         #msg m_quit
         jsr confirm
         bcc +
+        sei                     ; leave a clean standard screen:
+        ldx #250                ; clear $0400-$07E7 (was a UCI buffer)
+        lda #$20
+-       sta $0400-1,x
+        sta $0400+249,x
+        sta $0400+499,x
+        sta $0400+749,x
+        dex
+        bne -
+        lda $dd00               ; VIC bank 0
+        ora #$03
+        sta $dd00
+        lda #$15                ; screen $0400, character ROM
+        sta $d018
         lda #$37
         sta $01
         jmp $fce2               ; restart the C64
