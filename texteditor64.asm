@@ -1,7 +1,7 @@
 ; ========================================================================================
 ;  ASCII text editor for the C64
 ;  Copyright (c) 2026 supertoq
-;  Version 2
+;  Version 2  (y)
 ;  https://github.com/supertoq/Texteditor64
 ;
 ;  A text editor that can load, edit and save ASCII code.
@@ -12,7 +12,7 @@
 ;  - Files are saved as C64 SEQ files containing plain ASCII
 ;    (on Windows the file extension .seq has to be renamed to .txt)
 ;  - Line ending LF or CRLF selectable in the source code
-;  - Text memory $36B7-$CEFF (approx. 38 KByte), BASIC ROM is switched off
+;  - Text memory $36B7-$CEFF (38,985 bytes), BASIC ROM is switched off
 ;  - Program memory usage 12.9 KByte
 ;  - Upper/lower case character set is copied to RAM at $D000
 ;  - Every input is converted to ASCII
@@ -1964,10 +1964,10 @@ bk_pu   lda bsel                ; one page back
         jmp bk_mv
 bk_hm   lda #0
         sta bsel
-bk_mv   lda #1                  ; pointer moved last
-        sta bmoved
-        jsr bdraw
-bk_no   jmp gn_lp
+bk_mv   jsr bdraw
+bk_no   lda #1                  ; pointer key pressed last
+        sta bmoved              ; (also at the start/end of the list)
+        jmp gn_lp
 
 ; F7: show help over the list, any key: back to the list
 bk_help lda #0                  ; title
@@ -5258,7 +5258,7 @@ bvalid  .byte 0                 ; 1 = list has been read
 bsel    .byte 0                 ; entry under the pointer
 btop    .byte 0                 ; first visible entry
 bcount  .byte 0                 ; number of entries
-bmoved  .byte 0                 ; 1 = pointer moved last
+bmoved  .byte 0                 ; 1 = pointer key pressed last
 broot   .byte 0                 ; 1 = UCI in the root folder
 bdisk   .byte 0                 ; 1 = list of a disk
 bidx    .byte 0
